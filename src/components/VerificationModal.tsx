@@ -7,17 +7,28 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 import { Loader2, CheckCircle2, Phone } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { API_BASE } from "@/lib/api";
 
 interface VerificationModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   phone: string;
+  onOtpVerified: () => Promise<{ ok: boolean; error?: string }>;
 }
 
-export function VerificationModal({ open, onOpenChange, phone }: VerificationModalProps) {
+export function VerificationModal({
+  open,
+  onOpenChange,
+  phone,
+  onOtpVerified,
+}: VerificationModalProps) {
   const { t } = useLanguage();
   const [code, setCode] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
@@ -26,7 +37,7 @@ export function VerificationModal({ open, onOpenChange, phone }: VerificationMod
   const [error, setError] = useState<string | null>(null);
 
   const handleVerify = async () => {
-    if (code.length !== 6) {
+    if (code.length !== 4) {
       setError(t.verification.codeError);
       return;
     }
@@ -35,13 +46,27 @@ export function VerificationModal({ open, onOpenChange, phone }: VerificationMod
     setError(null);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const response = await fetch(`${API_BASE}/user/verify-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone, code }),
+      });
 
-      if (code === "123456") {
-        setIsVerified(true);
-      } else {
-        setError(t.verification.incorrectCode);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setError(body?.message || t.verification.incorrectCode);
+        return;
       }
+
+      const creationResult = await onOtpVerified();
+      if (!creationResult.ok) {
+        setError(creationResult.error || "Failed to complete registration.");
+        return;
+      }
+
+      setIsVerified(true);
     } catch (err) {
       setError(t.verification.verifyFailed);
     } finally {
@@ -54,7 +79,13 @@ export function VerificationModal({ open, onOpenChange, phone }: VerificationMod
     setError(null);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await fetch(`${API_BASE}/user/send-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone }),
+      });
       setCode("");
     } catch (err) {
       setError(t.verification.resendFailed);
@@ -100,10 +131,10 @@ export function VerificationModal({ open, onOpenChange, phone }: VerificationMod
                   setCode(value);
                   setError(null);
                 }}
-                maxLength={6}
+                maxLength={4}
               >
                 <InputOTPGroup className="gap-2">
-                  {[0, 1, 2, 3, 4, 5].map((index) => (
+                  {[0, 1, 2, 3].map((index) => (
                     <InputOTPSlot
                       key={index}
                       index={index}
@@ -115,14 +146,16 @@ export function VerificationModal({ open, onOpenChange, phone }: VerificationMod
             </div>
 
             {error && (
-              <p className="text-center text-sm text-red-400 animate-fade-up">{error}</p>
+              <p className="text-center text-sm text-red-400 animate-fade-up">
+                {error}
+              </p>
             )}
 
             <Button
               size="lg"
               className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold"
               onClick={handleVerify}
-              disabled={isVerifying || code.length !== 6}
+              disabled={isVerifying || code.length !== 4}
             >
               {isVerifying ? (
                 <>

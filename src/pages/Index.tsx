@@ -5,22 +5,85 @@ import { Footer } from "@/components/Footer";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
 import logo from "@/assets/martev-logo.svg";
+import { useToast } from "@/components/ui/use-toast";
+import { API_BASE } from "@/lib/api";
 
 interface FormData {
   firstName: string;
   lastName: string;
   phone: string;
   email: string;
+  categoryId: string;
 }
 
 function IndexContent() {
   const [showVerification, setShowVerification] = useState(false);
-  const [submittedData, setSubmittedData] = useState<FormData | null>(null);
+  const [submittedData, setSubmittedData] = useState<{
+    data: FormData;
+    file: File;
+  } | null>(null);
   const { t } = useLanguage();
+  const { toast } = useToast();
 
-  const handleFormSuccess = (data: FormData) => {
-    setSubmittedData(data);
+  const handleFormSuccess = (payload: { data: FormData; file: File }) => {
+    setSubmittedData(payload);
     setShowVerification(true);
+  };
+
+  const handleOtpVerified = async () => {
+    if (!submittedData) {
+      return { ok: false, error: "Missing submission data." };
+    }
+
+    const formData = new FormData();
+    formData.append("name", submittedData.data.firstName);
+    formData.append("surname", submittedData.data.lastName);
+    formData.append("phone", submittedData.data.phone);
+    formData.append("email", submittedData.data.email);
+    formData.append("category_id", submittedData.data.categoryId);
+    formData.append("license_file", submittedData.file);
+
+    try {
+      const response = await fetch(`${API_BASE}/user/create-driver`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const message =
+          body?.message || "Registration failed. Please try again.";
+
+        toast({
+          variant: "destructive",
+          description: message,
+        });
+
+        setShowVerification(false);
+        setSubmittedData(null);
+        return {
+          ok: false,
+          error: message,
+        };
+      }
+
+      toast({
+        description: "Registration completed successfully.",
+      });
+
+      setShowVerification(false);
+      setSubmittedData(null);
+      return { ok: true };
+    } catch (error) {
+      console.error("Create driver error:", error);
+      toast({
+        variant: "destructive",
+        description: "Unexpected error. Please try again.",
+      });
+      setShowVerification(false);
+      setSubmittedData(null);
+      return { ok: false, error: "Unexpected error. Please try again." };
+    }
   };
 
   return (
@@ -35,17 +98,20 @@ function IndexContent() {
         {/* Gradient Orbs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-40 -left-40 w-[500px] h-[500px] rounded-full bg-emerald-500/20 blur-[120px] animate-float" />
-          <div className="absolute top-1/2 -right-40 w-[400px] h-[400px] rounded-full bg-teal-500/15 blur-[100px] animate-float" style={{ animationDelay: "2s" }} />
+          <div
+            className="absolute top-1/2 -right-40 w-[400px] h-[400px] rounded-full bg-teal-500/15 blur-[100px] animate-float"
+            style={{ animationDelay: "2s" }}
+          />
           <div className="absolute -bottom-20 left-1/3 w-[600px] h-[300px] rounded-full bg-green-500/10 blur-[120px]" />
         </div>
 
         {/* Grid Pattern Overlay */}
-        <div 
+        <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
             backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
                               linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-            backgroundSize: '60px 60px'
+            backgroundSize: "60px 60px",
           }}
         />
 
@@ -58,13 +124,15 @@ function IndexContent() {
                 alt="MartEV Logo"
                 className="mx-auto mb-10 h-12 w-auto"
               />
-              
+
               {/* Badge */}
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 mb-6">
                 <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-sm font-medium text-emerald-400">MartEV</span>
+                <span className="text-sm font-medium text-emerald-400">
+                  MartEV
+                </span>
               </div>
-              
+
               {/* Hero Title */}
               <h1 className="text-4xl sm:text-5xl font-extrabold text-white mb-4 leading-tight">
                 {t.hero.title}
@@ -72,14 +140,14 @@ function IndexContent() {
               <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent mb-6">
                 {t.hero.titleHighlight}
               </h2>
-              
+
               <p className="text-slate-400 text-lg max-w-sm mx-auto">
                 {t.hero.subtitle}
               </p>
             </div>
 
             {/* Form Card */}
-            <div 
+            <div
               className="glass-card rounded-2xl p-8 shadow-2xl shadow-emerald-500/5 animate-fade-up"
               style={{ animationDelay: "0.2s" }}
             >
@@ -87,7 +155,10 @@ function IndexContent() {
             </div>
 
             {/* Website Link */}
-            <div className="mt-8 text-center animate-fade-up" style={{ animationDelay: "0.4s" }}>
+            <div
+              className="mt-8 text-center animate-fade-up"
+              style={{ animationDelay: "0.4s" }}
+            >
               <a
                 href="https://martev.io"
                 target="_blank"
@@ -95,14 +166,19 @@ function IndexContent() {
                 className="inline-flex items-center gap-2 text-slate-500 hover:text-emerald-400 transition-colors text-sm group"
               >
                 {t.hero.websiteLink}
-                <svg 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  className="h-4 w-4 transition-transform group-hover:translate-x-0.5" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
                   stroke="currentColor"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17 8l4 4m0 0l-4 4m4-4H3"
+                  />
                 </svg>
               </a>
             </div>
@@ -117,7 +193,8 @@ function IndexContent() {
       <VerificationModal
         open={showVerification}
         onOpenChange={setShowVerification}
-        phone={submittedData?.phone || ""}
+        phone={submittedData?.data.phone || ""}
+        onOtpVerified={handleOtpVerified}
       />
     </div>
   );

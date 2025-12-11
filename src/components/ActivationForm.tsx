@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Upload, User, Mail, Phone, Loader2, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useToast } from "@/components/ui/use-toast";
+import { API_BASE } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -18,7 +27,7 @@ interface FormInputs {
 }
 
 interface ActivationFormProps {
-  onSubmitSuccess: (data: FormInputs) => void;
+  onSubmitSuccess: (payload: { data: FormInputs; file: File }) => void;
 }
 
 export function ActivationForm({ onSubmitSuccess }: ActivationFormProps) {
@@ -38,7 +47,43 @@ export function ActivationForm({ onSubmitSuccess }: ActivationFormProps) {
     register,
     handleSubmit,
     formState: { errors },
+    reset,
+    setValue,
+    watch,
   } = useForm<FormInputs>();
+  const { toast } = useToast();
+  const [categories, setCategories] = useState<{ id: number; name: string }[]>(
+    []
+  );
+  const [isLoadingCategories, setIsLoadingCategories] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      setIsLoadingCategories(true);
+      setCategoryError(null);
+      try {
+        const res = await fetch(`${API_BASE}/categories`);
+        if (!res.ok) {
+          throw new Error("Failed to load categories");
+        }
+        const data = await res.json();
+        setCategories(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Category fetch error:", err);
+        setCategoryError("ვერ ჩაიტვირთა კატეგორიები");
+        toast({
+          variant: "destructive",
+          description: "Unable to load categories. Please try again.",
+        });
+      } finally {
+        setIsLoadingCategories(false);
+      }
+    };
+    fetchCategories();
+  }, [toast]);
+
+  const selectedCategory = watch("categoryId");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -59,48 +104,62 @@ export function ActivationForm({ onSubmitSuccess }: ActivationFormProps) {
     setServerErrors({});
 
     try {
-      const formData = new FormData();
-      formData.append("name", data.firstName);
-      formData.append("surname", data.lastName);
-      formData.append("phone", data.phone.replace(/\s+/g, ""));
-      formData.append("email", data.email);
-      formData.append("category_id", data.categoryId);
-
       if (!file) {
         setFileError("License file is required");
         setIsSubmitting(false);
         return;
       }
 
-      formData.append("license_file", file);
+      const phone = data.phone.replace(/\s+/g, "");
 
-      const response = await fetch(
-        "https://martevio.on-forge.com/api/user/create-driver",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const response = await fetch(`${API_BASE}/user/send-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone }),
+      });
 
       if (!response.ok) {
         if (response.status === 422) {
           const body = await response.json();
           const errors = body?.errors ?? {};
 
-          setServerErrors({
+          const fieldErrors = {
             phone: errors.phone?.[0],
-            email: errors.email?.[0],
-            license_file: errors.license_file?.[0],
-            category_id: errors.category_id?.[0],
             general: body?.message,
+          };
+          setServerErrors(fieldErrors);
+          toast({
+            variant: "destructive",
+            description:
+              fieldErrors.phone || fieldErrors.general || "Failed to send OTP.",
           });
         } else {
-          setServerErrors({ general: "Server error. Please try again." });
+          setServerErrors({
+            general: "Failed to send OTP. Please try again.",
+          });
+          toast({
+            variant: "destructive",
+            description: "Failed to send OTP. Please try again.",
+          });
         }
         return;
       }
 
-      onSubmitSuccess(data);
+      toast({
+        description: "OTP code sent. Please check your phone.",
+      });
+
+      reset();
+      setFile(null);
+      setFileError(null);
+      setServerErrors({});
+
+      onSubmitSuccess({
+        data: { ...data, phone },
+        file,
+      });
     } catch (error) {
       console.error("Submission error:", error);
       setServerErrors({ general: "Unexpected error. Please try again." });
@@ -224,7 +283,7 @@ export function ActivationForm({ onSubmitSuccess }: ActivationFormProps) {
           {file ? (
             <>
               <CheckCircle className="h-5 w-5 text-emerald-400" />
-              <span className="text-sm font-medium text-white">
+              <span className="text-sm font-medium text-white truncate max-w-[200px] block">
                 {file.name}
               </span>
             </>
@@ -253,22 +312,45 @@ export function ActivationForm({ onSubmitSuccess }: ActivationFormProps) {
           htmlFor="categoryId"
           className="text-sm font-medium text-slate-300"
         >
-          Category ID {t.form.required}
+          Category {t.form.required}
         </Label>
-        <Input
-          id="categoryId"
-          type="text"
-          placeholder="Enter category ID"
-          className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-emerald-500/20"
-          {...register("categoryId", {
-            required: "Category is required",
-          })}
+        <input
+          type="hidden"
+          {...register("categoryId", { required: "Category is required" })}
         />
+        <Select
+          value={selectedCategory}
+          onValueChange={(value) => {
+            setValue("categoryId", value, { shouldValidate: true });
+            setServerErrors((prev) => ({ ...prev, category_id: undefined }));
+          }}
+          disabled={isLoadingCategories}
+        >
+          <SelectTrigger className="bg-white/5 border-white/10 text-white">
+            <SelectValue
+              placeholder={
+                isLoadingCategories
+                  ? "Loading categories..."
+                  : "Select category"
+              }
+            />
+          </SelectTrigger>
+          <SelectContent className="bg-[#0f1520] text-white border-white/10">
+            {categories.map((cat) => (
+              <SelectItem key={cat.id} value={String(cat.id)}>
+                {cat.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {errors.categoryId && (
           <p className="text-sm text-red-400">{errors.categoryId.message}</p>
         )}
         {serverErrors.category_id && (
           <p className="text-sm text-red-400">{serverErrors.category_id}</p>
+        )}
+        {categoryError && (
+          <p className="text-sm text-red-400">{categoryError}</p>
         )}
       </div>
 
