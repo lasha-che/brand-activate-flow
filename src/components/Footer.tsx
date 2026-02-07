@@ -33,7 +33,7 @@ export function Footer() {
                 className="flex items-center gap-3 text-sm text-slate-400 transition-colors hover:text-emerald-400"
               >
                 <Mail className="h-4 w-4 text-emerald-500" />
-                info@martev.io
+                contact@martev.io
               </a>
               <a
                 href="https://martev.io"
@@ -50,9 +50,7 @@ export function Footer() {
           {/* App Download */}
           <div className="space-y-4">
             <h3 className="font-semibold text-white">{t.footer.downloadApp}</h3>
-            <p className="text-sm text-slate-500">
-              {t.footer.appDescription}
-            </p>
+            <p className="text-sm text-slate-500">{t.footer.appDescription}</p>
             <div className="flex gap-3">
               <a
                 href="https://bit.ly/4i4KOOo"
